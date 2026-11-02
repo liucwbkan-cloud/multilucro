@@ -11,9 +11,16 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Inicialização do Banco de Dados SQLite Unificado
+# Configuração do Banco de Dados no Disco Persistente do Render (/data) ou local
+DB_DIR = "/data"
+if not os.path.exists(DB_DIR):
+    os.makedirs(DB_DIR, exist_ok=True)
+    DB_PATH = "multilucro.db"
+else:
+    DB_PATH = os.path.join(DB_DIR, "multilucro.db")
+
 def init_db():
-    conn = sqlite3.connect('multilucro.db', check_same_thread=False)
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     cursor = conn.cursor()
     
     cursor.execute('''
@@ -24,7 +31,7 @@ def init_db():
     ''')
     cursor.execute("INSERT OR IGNORE INTO config (chave, valor) VALUES ('mp_access_token', 'APP_USR-8795274098799200-110122-881e19882551e6846a65ae9be5029814-442748191')")
     cursor.execute("INSERT OR IGNORE INTO config (chave, valor) VALUES ('nome_fantasia', 'Multi Lucro Investimentos')")
-    cursor.execute("INSERT OR IGNORE INTO config (chave, valor) VALUES ('preco_numero_sorte', '10.0')")
+    cursor.execute("INSERT OR IGNORE INTO config (chave, valor) VALUES ('preco_numero_sorte', '0.10')")
     cursor.execute("INSERT OR IGNORE INTO config (chave, valor) VALUES ('planos_investimento', '7 dias (1%), 30 dias (3%), 90 dias (5%), 180 dias (8%), 365 dias (20%)')")
 
     cursor.execute('''
@@ -86,7 +93,7 @@ def init_db():
 init_db()
 
 def get_config(chave):
-    conn = sqlite3.connect('multilucro.db', check_same_thread=False)
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     cursor = conn.cursor()
     cursor.execute("SELECT valor FROM config WHERE chave = ?", (chave,))
     res = cursor.fetchone()
@@ -94,13 +101,12 @@ def get_config(chave):
     return res[0] if res else ""
 
 def set_config(chave, valor):
-    conn = sqlite3.connect('multilucro.db', check_same_thread=False)
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     cursor = conn.cursor()
     cursor.execute("INSERT OR REPLACE INTO config (chave, valor) VALUES (?, ?)", (chave, valor))
     conn.commit()
     conn.close()
 
-# Servidor Web Completo
 class WebAppHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed_path = urllib.parse.urlparse(self.path)
@@ -111,41 +117,85 @@ class WebAppHandler(BaseHTTPRequestHandler):
         self.send_header("Content-type", "text/html; charset=utf-8")
         self.end_headers()
 
-        fantasia = get_config('nome_fantasia')
-
-        # 1. Landing Page Pública (Home)
+        # 1. Rota Raiz Pública: Fachada da Intermediadora Unipay Intermediações
         if path == '/' or path == '/index':
-            html = f"""
+            html = """
             <html>
-            <head><title>{fantasia} - Página Inicial</title></head>
-            <body style="font-family: Arial; padding: 40px; background: #0f172a; color: #f8fafc; text-align: center;">
-                <div style="max-width: 600px; margin: auto; background: #1e293b; padding: 40px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.6);">
-                    <h1 style="color: #38bdf8;">💎 {fantasia}</h1>
-                    <p style="color: #94a3b8; font-size: 16px;">Invista com rentabilidade e participe dos nossos sorteios semanais exclusivos!</p>
+            <head><title>Unipay Intermediações - Soluções B2B & B2C</title></head>
+            <body style="font-family: Arial; padding: 40px; background: #0b0f19; color: #f8fafc; text-align: center;">
+                <div style="max-width: 800px; margin: auto; background: #1e293b; padding: 50px; border-radius: 16px; box-shadow: 0 4px 30px rgba(0,0,0,0.8);">
+                    <h1 style="color: #38bdf8; font-size: 36px; margin-bottom: 10px;">⚡ Unipay Intermediações</h1>
+                    <p style="color: #34d399; font-size: 18px; font-weight: bold; margin-top:0;">Soluções Avançadas em Pagamentos B2B & B2C e Consultorias Financeiras</p>
+                    <p style="color: #94a3b8; font-size: 15px; line-height: 1.6; margin-top: 20px;">
+                        Facilitamos transações financeiras de alta performance, automação de recebimentos via Pix e consultoria especializada para estruturação de ecossistemas de pagamentos corporativos.
+                    </p>
                     <hr style="border: 0; border-top: 1px solid #334155; margin: 30px 0;">
                     
-                    <h3>Fazer Login</h3>
-                    <form method="GET" action="/dashboard" style="margin-bottom: 25px;">
-                        <input type="number" name="user_id" placeholder="Digite seu ID de Usuário" required style="width:80%; padding:10px; background:#0f172a; border:1px solid #475569; color:white; border-radius:6px; margin-bottom: 10px;"><br>
-                        <input type="submit" value="Entrar no Dashboard" style="background: #22c55e; color: white; padding: 10px 20px; font-weight: bold; border: none; border-radius:6px; cursor: pointer;">
-                    </form>
+                    <div style="display: flex; justify-content: space-around; flex-wrap: wrap; gap: 20px; margin-bottom: 40px;">
+                        <div style="background: #0f172a; padding: 20px; border-radius: 8px; width: 45%;">
+                            <h3 style="color: #38bdf8;">🔄 Intermediação B2B</h3>
+                            <p style="color: #94a3b8; font-size: 14px;">Gestão de fluxo de caixa, split de pagamentos e liquidez para empresas.</p>
+                        </div>
+                        <div style="background: #0f172a; padding: 20px; border-radius: 8px; width: 45%;">
+                            <h3 style="color: #38bdf8;">💳 Operações B2C</h3>
+                            <p style="color: #94a3b8; font-size: 14px;">Checkout transparente, emissão instantânea de Pix e alta conversão de vendas.</p>
+                        </div>
+                    </div>
 
-                    <h3>Cadastrar-se</h3>
-                    <form method="POST" action="/cadastrar">
-                        <input type="text" name="nome" placeholder="Nome Completo" required style="width:100%; padding:10px; margin-bottom:10px; background:#0f172a; border:1px solid #475569; color:white; border-radius:6px;"><br>
-                        <input type="text" name="cpf" placeholder="CPF" required style="width:100%; padding:10px; margin-bottom:10px; background:#0f172a; border:1px solid #475569; color:white; border-radius:6px;"><br>
-                        <input type="text" name="pix" placeholder="Chave Pix para Resgates" required style="width:100%; padding:10px; margin-bottom:10px; background:#0f172a; border:1px solid #475569; color:white; border-radius:6px;"><br>
-                        <input type="text" name="telefone" placeholder="Telefone" required style="width:100%; padding:10px; margin-bottom:10px; background:#0f172a; border:1px solid #475569; color:white; border-radius:6px;"><br>
-                        <input type="email" name="email" placeholder="E-mail" required style="width:100%; padding:10px; margin-bottom:20px; background:#0f172a; border:1px solid #475569; color:white; border-radius:6px;"><br>
-                        <input type="submit" value="Criar Conta" style="width:100%; background: #38bdf8; color: #0f172a; padding: 12px; font-weight: bold; border: none; border-radius:6px; cursor: pointer;">
-                    </form>
+                    <p style="color: #64748b; font-size: 13px;">© 2026 Unipay Intermediações Ltda. Todos os direitos reservados.</p>
                 </div>
             </body>
             </html>
             """
             self.wfile.write(html.encode("utf-8"))
 
-        # 2. Painel Administrativo (/admin)
+        # 2. Rota Oculta de Acesso ao Sistema (Login / Cadastro)
+        elif path == '/app' or path == '/login':
+            html = """
+            <html>
+            <head><title>Acesso Restrito - Plataforma</title></head>
+            <body style="font-family: Arial; padding: 40px; background: #0f172a; color: #f8fafc; text-align: center;">
+                <div style="max-width: 500px; margin: auto; background: #1e293b; padding: 40px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.6);">
+                    <h2 style="color: #38bdf8;">🔐 Acesso ao Sistema</h2>
+                    <p style="color: #94a3b8; font-size: 14px; margin-bottom: 25px;">Informe suas credenciais ou ID para acessar seu painel.</p>
+                    
+                    <form method="GET" action="/dashboard" style="margin-bottom: 30px;">
+                        <input type="number" name="user_id" placeholder="Digite seu ID de Usuário" required style="width:100%; padding:12px; background:#0f172a; border:1px solid #475569; color:white; border-radius:6px; margin-bottom: 12px;"><br>
+                        <input type="submit" value="Entrar no Dashboard" style="background: #22c55e; color: white; padding: 12px; font-weight: bold; border: none; border-radius:6px; cursor: pointer; width:100%;">
+                    </form>
+
+                    <hr style="border: 0; border-top: 1px solid #334155; margin: 20px 0;">
+                    <p style="color: #94a3b8; font-size: 14px;">Não tem uma conta?</p>
+                    <a href="/cadastro" style="background: #38bdf8; color: #0f172a; padding: 10px 20px; font-weight: bold; border-radius: 6px; text-decoration: none; display: inline-block;">Criar Nova Conta</a>
+                </div>
+            </body>
+            </html>
+            """
+            self.wfile.write(html.encode("utf-8"))
+
+        elif path == '/cadastro':
+            html = """
+            <html>
+            <head><title>Cadastro de Cliente</title></head>
+            <body style="font-family: Arial; padding: 40px; background: #0f172a; color: #f8fafc; text-align: center;">
+                <div style="max-width: 500px; margin: auto; background: #1e293b; padding: 40px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.6);">
+                    <h2 style="color: #38bdf8;">📝 Cadastro de Nova Conta</h2>
+                    <form method="POST" action="/cadastrar">
+                        <input type="text" name="nome" placeholder="Nome Completo" required style="width:100%; padding:10px; margin-bottom:10px; background:#0f172a; border:1px solid #475569; color:white; border-radius:6px;"><br>
+                        <input type="text" name="cpf" placeholder="CPF" required style="width:100%; padding:10px; margin-bottom:10px; background:#0f172a; border:1px solid #475569; color:white; border-radius:6px;"><br>
+                        <input type="text" name="pix" placeholder="Chave Pix para Resgates" required style="width:100%; padding:10px; margin-bottom:10px; background:#0f172a; border:1px solid #475569; color:white; border-radius:6px;"><br>
+                        <input type="text" name="telefone" placeholder="Telefone" required style="width:100%; padding:10px; margin-bottom:10px; background:#0f172a; border:1px solid #475569; color:white; border-radius:6px;"><br>
+                        <input type="email" name="email" placeholder="E-mail" required style="width:100%; padding:10px; margin-bottom:20px; background:#0f172a; border:1px solid #475569; color:white; border-radius:6px;"><br>
+                        <input type="submit" value="Finalizar Cadastro" style="width:100%; background: #38bdf8; color: #0f172a; padding: 12px; font-weight: bold; border: none; border-radius:6px; cursor: pointer;">
+                    </form>
+                    <br><a href="/app" style="color: #94a3b8; font-size: 14px;">Já possui conta? Faça login</a>
+                </div>
+            </body>
+            </html>
+            """
+            self.wfile.write(html.encode("utf-8"))
+
+        # 3. Painel Administrativo Oculto (/admin)
         elif path == '/admin':
             auth_header = self.headers.get('Authorization')
             if auth_header is None or not auth_header.startswith('Basic '):
@@ -167,8 +217,9 @@ class WebAppHandler(BaseHTTPRequestHandler):
                 mp_token = get_config('mp_access_token')
                 preco_sorte = get_config('preco_numero_sorte')
                 planos = get_config('planos_investimento')
+                fantasia = get_config('nome_fantasia')
 
-                conn = sqlite3.connect('multilucro.db', check_same_thread=False)
+                conn = sqlite3.connect(DB_PATH, check_same_thread=False)
                 cursor = conn.cursor()
                 cursor.execute("SELECT SUM(saldo_investido), SUM(arrecadado_sorteios) FROM caixa WHERE id = 1")
                 caixa = cursor.fetchone()
@@ -186,7 +237,7 @@ class WebAppHandler(BaseHTTPRequestHandler):
                             <label><b>Mercado Pago Access Token:</b></label><br>
                             <input type="text" name="mp_access_token" value="{mp_token}" style="width: 100%; padding: 8px; margin-bottom: 10px; background:#0f172a; color:#fff; border:1px solid #475569; border-radius:6px;"><br>
                             
-                            <label><b>Nome Fantasia:</b></label><br>
+                            <label><b>Nome Fantasia Interno:</b></label><br>
                             <input type="text" name="nome_fantasia" value="{fantasia}" style="width: 100%; padding: 8px; margin-bottom: 10px; background:#0f172a; color:#fff; border:1px solid #475569; border-radius:6px;"><br>
 
                             <label><b>Preço do Número da Sorte (R$):</b></label><br>
@@ -203,8 +254,12 @@ class WebAppHandler(BaseHTTPRequestHandler):
                         <p>Total Investido: R$ {caixa[0] or 0.0:.2f}</p>
                         <p>Total Arrecadado para Sorteio: R$ {caixa[1] or 0.0:.2f}</p>
                         
-                        <form method="POST" action="/realizar_sorteio">
+                        <form method="POST" action="/realizar_sorteio" style="margin-bottom: 15px;">
                             <input type="submit" value="Executar Sorteio Semanal" style="background: #eab308; color: #0f172a; font-weight:bold; padding: 12px; width:100%; border:none; border-radius:6px; cursor:pointer;">
+                        </form>
+
+                        <form method="POST" action="/resetar_banco" onsubmit="return confirm('Tem certeza absoluta que deseja apagar todos os dados e resetar o banco?');">
+                            <input type="submit" value="⚠️ Resetar Banco de Dados (Zerar Sistema)" style="background: #ef4444; color: white; font-weight:bold; padding: 12px; width:100%; border:none; border-radius:6px; cursor:pointer;">
                         </form>
 
                         <h3 style="margin-top: 30px;">🏆 Histórico Geral de Sorteios</h3>
@@ -216,7 +271,7 @@ class WebAppHandler(BaseHTTPRequestHandler):
                 
                 html += f"""
                         </div>
-                        <br><a href="/" style="color: #38bdf8;">Voltar à Página Inicial</a>
+                        <br><a href="/" style="color: #38bdf8;">Voltar à Página Principal</a>
                     </div>
                 </body>
                 </html>
@@ -227,15 +282,15 @@ class WebAppHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(b"Usuario ou senha incorretos.")
 
-        # 3. Dashboard do Usuário (Com Histórico de Sorteios e Gestão Organizada)
+        # 4. Dashboard do Usuário
         elif path == '/dashboard':
             user_id = query.get('user_id', ['1'])[0]
-            conn = sqlite3.connect('multilucro.db', check_same_thread=False)
+            conn = sqlite3.connect(DB_PATH, check_same_thread=False)
             cursor = conn.cursor()
             cursor.execute("SELECT nome FROM users WHERE user_id = ?", (user_id,))
             u = cursor.fetchone()
             if not u:
-                self.wfile.write(b"Usuario nao encontrado. <a href='/'>Voltar</a>")
+                self.wfile.write(b"Usuario nao encontrado. <a href='/app'>Voltar ao Login</a>")
                 conn.close()
                 return
 
@@ -257,6 +312,7 @@ class WebAppHandler(BaseHTTPRequestHandler):
             conn.close()
 
             preco_sorte = float(get_config('preco_numero_sorte'))
+            fantasia = get_config('nome_fantasia')
 
             html = f"""
             <html>
@@ -265,7 +321,7 @@ class WebAppHandler(BaseHTTPRequestHandler):
                 <div style="max-width: 750px; margin: auto; background: #1e293b; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5);">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
                         <h2>👤 Olá, {nome_usuario}</h2>
-                        <a href="/" style="background:#ef4444; color:#fff; padding:6px 12px; border-radius:6px; text-decoration:none; font-size:14px;">Sair</a>
+                        <a href="/app" style="background:#ef4444; color:#fff; padding:6px 12px; border-radius:6px; text-decoration:none; font-size:14px;">Sair</a>
                     </div>
                     <hr style="border: 0; border-top: 1px solid #334155; margin: 20px 0;">
 
@@ -356,7 +412,7 @@ class WebAppHandler(BaseHTTPRequestHandler):
             telefone = params.get('telefone', [''])[0]
             email = params.get('email', [''])[0]
 
-            conn = sqlite3.connect('multilucro.db', check_same_thread=False)
+            conn = sqlite3.connect(DB_PATH, check_same_thread=False)
             cursor = conn.cursor()
             cursor.execute("INSERT INTO users (nome, cpf, pix, telefone, email) VALUES (?, ?, ?, ?, ?)", (nome, cpf, pix, telefone, email))
             conn.commit()
@@ -382,8 +438,26 @@ class WebAppHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(b"<body style='font-family:Arial; background:#0f172a; color:#fff; text-align:center; padding:50px;'><h3>Configuracoes salvas!</h3><a href='/admin' style='color:#38bdf8;'>Voltar</a></body>")
 
+        elif path == '/resetar_banco':
+            conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+            cursor = conn.cursor()
+            cursor.execute("DROP TABLE IF EXISTS config")
+            cursor.execute("DROP TABLE IF EXISTS users")
+            cursor.execute("DROP TABLE IF EXISTS investments")
+            cursor.execute("DROP TABLE IF EXISTS lottery_tickets")
+            cursor.execute("DROP TABLE IF EXISTS lottery_history")
+            cursor.execute("DROP TABLE IF EXISTS caixa")
+            conn.commit()
+            conn.close()
+            init_db()
+
+            self.send_response(200)
+            self.send_header("Content-type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(b"<body style='font-family:Arial; background:#0f172a; color:#fff; text-align:center; padding:50px;'><h3>Banco de dados resetado com sucesso!</h3><a href='/admin' style='color:#38bdf8;'>Voltar ao Admin</a></body>")
+
         elif path == '/realizar_sorteio':
-            conn = sqlite3.connect('multilucro.db', check_same_thread=False)
+            conn = sqlite3.connect(DB_PATH, check_same_thread=False)
             cursor = conn.cursor()
             cursor.execute("SELECT saldo_investido, arrecadado_sorteios FROM caixa WHERE id = 1")
             caixa = cursor.fetchone()
@@ -400,7 +474,7 @@ class WebAppHandler(BaseHTTPRequestHandler):
             numero_sorteado = 0
             acumulado = "Não"
 
-            if bilhetes and random.random() < 0.05: # Probabilidade menor que 5%
+            if bilhetes and random.random() < 0.05:
                 sorteado = random.choice(bilhetes)
                 ganhador_id = sorteado[1]
                 numero_sorteado = sorteado[2]
@@ -422,7 +496,7 @@ class WebAppHandler(BaseHTTPRequestHandler):
             self.send_header("Content-type", "text/html; charset=utf-8")
             self.end_headers()
             msg = f"Sorteio realizado! {'Ganhador: ' + str(ganhador_nome) if ganhador_id else 'Prêmio Acumulado!'} | Prêmio: R$ {premio:.2f}"
-            self.wfile.write(f"<body style='font-family:Arial; background:#0f172a; color:#fff; text-align:center; padding:50px;'><h3>{msg}</h3><a href='/admin' style='color:#38bdf8;'>Voltar</a></body>".encode("utf-8"))
+            self.wfile.write(b"<body style='font-family:Arial; background:#0f172a; color:#fff; text-align:center; padding:50px;'><h3>" + msg.encode("utf-8") + b"</h3><a href='/admin' style='color:#38bdf8;'>Voltar</a></body>")
 
         elif path == '/investir':
             user_id = params.get('user_id', ['1'])[0]
@@ -459,7 +533,7 @@ class WebAppHandler(BaseHTTPRequestHandler):
             else:
                 erro_msg = response.text
 
-            conn = sqlite3.connect('multilucro.db', check_same_thread=False)
+            conn = sqlite3.connect(DB_PATH, check_same_thread=False)
             cursor = conn.cursor()
             cursor.execute("INSERT INTO investments (user_id, valor, prazo_dias, lucro_pct, payment_id, status) VALUES (?, ?, ?, ?, ?, 'pendente')", (user_id, valor, prazo, lucro, payment_id))
             cursor.execute("UPDATE caixa SET saldo_investido = saldo_investido + ? WHERE id = 1", (valor,))
@@ -471,11 +545,35 @@ class WebAppHandler(BaseHTTPRequestHandler):
                 <h2>🧾 Efetue o Pagamento via Pix</h2>
                 <p>Valor: R$ {valor:.2f}</p>
                 {"<img src='data:image/png;base64," + qr_base64 + "' style='width:200px; height:200px; background:#fff; padding:10px; border-radius:8px;'/>" if qr_base64 else ""}
-                <p><b>PIX Copia e Cola:</b></p>
-                <textarea style="width:80%; height:80px; background:#1e293b; color:#fff; padding:10px;">{qr_code or 'Erro: ' + erro_msg}</textarea>
-                <p id="status" style="color:#eab308; font-weight:bold; margin-top:20px;">Aguardando confirmação do pagamento...</p>
+                <p><b>PIX Copia e Cola (Toque para copiar):</b></p>
+                <textarea id="pixCode" readonly onclick="copyPix()" style="width:80%; height:80px; background:#1e293b; color:#fff; padding:10px; border-radius:6px; border:1px solid #475569; cursor:pointer;" title="Clique para copiar">{qr_code or 'Erro: ' + erro_msg}</textarea>
+                <p id="copyAlert" style="color:#22c55e; font-size:14px; height:20px;"></p>
+                
+                <p style="color:#38bdf8; font-weight:bold; margin-top:10px;">Validade do Pix: <span id="timer">15:00</span></p>
+                <p id="status" style="color:#eab308; font-weight:bold; margin-top:10px;">Aguardando confirmação do pagamento...</p>
                 
                 <script>
+                    function copyPix() {{
+                        const copyText = document.getElementById("pixCode");
+                        copyText.select();
+                        copyText.setSelectionRange(0, 99999);
+                        navigator.clipboard.writeText(copyText.value);
+                        document.getElementById("copyAlert").innerText = "✔ Pix copiado para a área de transferência!";
+                        setTimeout(() => {{ document.getElementById("copyAlert").innerText = ""; }}, 3000);
+                    }}
+
+                    let time = 15 * 60;
+                    const timerInterval = setInterval(() => {{
+                        let minutes = Math.floor(time / 60);
+                        let seconds = time % 60;
+                        document.getElementById("timer").innerText = minutes + ":" + (seconds < 10 ? "0" : "") + seconds;
+                        if (time <= 0) {{
+                            clearInterval(timerInterval);
+                            document.getElementById("timer").innerText = "Expirado";
+                        }}
+                        time--;
+                    }}, 1000);
+
                     const paymentId = "{payment_id}";
                     const userId = "{user_id}";
                     
@@ -537,7 +635,7 @@ class WebAppHandler(BaseHTTPRequestHandler):
             else:
                 erro_msg = response.text
 
-            conn = sqlite3.connect('multilucro.db', check_same_thread=False)
+            conn = sqlite3.connect(DB_PATH, check_same_thread=False)
             cursor = conn.cursor()
             for _ in range(qtd):
                 num = random.randint(10000, 99999)
@@ -551,11 +649,35 @@ class WebAppHandler(BaseHTTPRequestHandler):
                 <h2>🎟️ Pagamento dos Números da Sorte</h2>
                 <p>Total: R$ {total:.2f}</p>
                 {"<img src='data:image/png;base64," + qr_base64 + "' style='width:200px; height:200px; background:#fff; padding:10px; border-radius:8px;'/>" if qr_base64 else ""}
-                <p><b>PIX Copia e Cola:</b></p>
-                <textarea style="width:80%; height:80px; background:#1e293b; color:#fff; padding:10px;">{qr_code or 'Erro: ' + erro_msg}</textarea>
-                <p id="status" style="color:#eab308; font-weight:bold; margin-top:20px;">Aguardando confirmação do pagamento...</p>
+                <p><b>PIX Copia e Cola (Toque para copiar):</b></p>
+                <textarea id="pixCode" readonly onclick="copyPix()" style="width:80%; height:80px; background:#1e293b; color:#fff; padding:10px; border-radius:6px; border:1px solid #475569; cursor:pointer;" title="Clique para copiar">{qr_code or 'Erro: ' + erro_msg}</textarea>
+                <p id="copyAlert" style="color:#22c55e; font-size:14px; height:20px;"></p>
+                
+                <p style="color:#38bdf8; font-weight:bold; margin-top:10px;">Validade do Pix: <span id="timer">15:00</span></p>
+                <p id="status" style="color:#eab308; font-weight:bold; margin-top:10px;">Aguardando confirmação do pagamento...</p>
                 
                 <script>
+                    function copyPix() {{
+                        const copyText = document.getElementById("pixCode");
+                        copyText.select();
+                        copyText.setSelectionRange(0, 99999);
+                        navigator.clipboard.writeText(copyText.value);
+                        document.getElementById("copyAlert").innerText = "✔ Pix copiado para a área de transferência!";
+                        setTimeout(() => {{ document.getElementById("copyAlert").innerText = ""; }}, 3000);
+                    }}
+
+                    let time = 15 * 60;
+                    const timerInterval = setInterval(() => {{
+                        let minutes = Math.floor(time / 60);
+                        let seconds = time % 60;
+                        document.getElementById("timer").innerText = minutes + ":" + (seconds < 10 ? "0" : "") + seconds;
+                        if (time <= 0) {{
+                            clearInterval(timerInterval);
+                            document.getElementById("timer").innerText = "Expirado";
+                        }}
+                        time--;
+                    }}, 1000);
+
                     const paymentId = "{payment_id}";
                     const userId = "{user_id}";
                     
