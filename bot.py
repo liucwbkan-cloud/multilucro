@@ -3,6 +3,7 @@ import sqlite3
 import random
 import requests
 import os
+import uuid
 import urllib.parse
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
@@ -297,7 +298,13 @@ class WebAppHandler(BaseHTTPRequestHandler):
 
             mp_token = get_config('mp_access_token')
             fantasia = get_config('nome_fantasia')
-            headers = {"Authorization": f"Bearer {mp_token}", "Content-Type": "application/json"}
+            
+            # Cabeçalho obrigatório contendo o X-Idempotency-Key exigido pelo Mercado Pago
+            headers = {
+                "Authorization": f"Bearer {mp_token}",
+                "Content-Type": "application/json",
+                "X-Idempotency-Key": str(uuid.uuid4())
+            }
             payload = {
                 "transaction_amount": valor,
                 "description": f"Investimento {fantasia} - Prazo {prazo} dias",
@@ -341,7 +348,13 @@ class WebAppHandler(BaseHTTPRequestHandler):
 
             mp_token = get_config('mp_access_token')
             fantasia = get_config('nome_fantasia')
-            headers = {"Authorization": f"Bearer {mp_token}", "Content-Type": "application/json"}
+            
+            # Cabeçalho obrigatório contendo o X-Idempotency-Key exigido pelo Mercado Pago
+            headers = {
+                "Authorization": f"Bearer {mp_token}",
+                "Content-Type": "application/json",
+                "X-Idempotency-Key": str(uuid.uuid4())
+            }
             payload = {
                 "transaction_amount": total,
                 "description": f"Compra de {qtd} Números da Sorte - {fantasia}",
