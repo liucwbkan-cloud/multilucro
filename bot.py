@@ -11,13 +11,8 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Configuração do Banco de Dados no Disco Persistente do Render (/data) ou local
-DB_DIR = "/data"
-if not os.path.exists(DB_DIR):
-    os.makedirs(DB_DIR, exist_ok=True)
-    DB_PATH = "multilucro.db"
-else:
-    DB_PATH = os.path.join(DB_DIR, "multilucro.db")
+# Caminho do banco de dados na raiz do projeto (compatível sem necessidade de disco externo)
+DB_PATH = "multilucro.db"
 
 def init_db():
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
@@ -116,6 +111,8 @@ class WebAppHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/html; charset=utf-8")
         self.end_headers()
+
+        fantasia = get_config('nome_fantasia')
 
         # 1. Rota Raiz Pública: Fachada da Intermediadora Unipay Intermediações
         if path == '/' or path == '/index':
