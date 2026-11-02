@@ -25,6 +25,7 @@ def init_db():
     cursor.execute("INSERT OR IGNORE INTO config (chave, valor) VALUES ('mp_access_token', 'APP_USR-8795274098799200-110122-881e19882551e6846a65ae9be5029814-442748191')")
     cursor.execute("INSERT OR IGNORE INTO config (chave, valor) VALUES ('nome_fantasia', 'Multi Lucro Investimentos')")
     cursor.execute("INSERT OR IGNORE INTO config (chave, valor) VALUES ('preco_numero_sorte', '10.0')")
+    cursor.execute("INSERT OR IGNORE INTO config (chave, valor) VALUES ('planos_investimento', '7 dias (1%), 30 dias (3%), 90 dias (5%), 180 dias (8%), 365 dias (20%)')")
 
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
@@ -57,6 +58,16 @@ def init_db():
             status TEXT DEFAULT 'ativo'
         )
     ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS lottery_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ganhador_id INTEGER,
+            numero_sorteado INTEGER,
+            premio REAL,
+            data TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
     
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS caixa (
@@ -87,7 +98,7 @@ def set_config(chave, valor):
     conn.commit()
     conn.close()
 
-# Servidor Web Completo (Landing Page, Dashboard, Sorteios e Painel Admin /admin)
+# Servidor Web Completo
 class WebAppHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed_path = urllib.parse.urlparse(self.path)
@@ -108,23 +119,23 @@ class WebAppHandler(BaseHTTPRequestHandler):
             <body style="font-family: Arial; padding: 40px; background: #0f172a; color: #f8fafc; text-align: center;">
                 <div style="max-width: 600px; margin: auto; background: #1e293b; padding: 40px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.6);">
                     <h1 style="color: #38bdf8;">💎 {fantasia}</h1>
-                    <p style="color: #94a3b8; font-size: 16px;">Invista seus valores com segurança e rentabilidade garantida. Participe também dos nossos sorteios semanais!</p>
+                    <p style="color: #94a3b8; font-size: 16px;">Invista com rentabilidade e participe dos nossos sorteios semanais!</p>
                     <hr style="border: 0; border-top: 1px solid #334155; margin: 30px 0;">
                     
-                    <h3>Já possui cadastro? Faça seu Login</h3>
+                    <h3>Fazer Login</h3>
                     <form method="GET" action="/dashboard" style="margin-bottom: 25px;">
                         <input type="number" name="user_id" placeholder="Digite seu ID de Usuário" required style="width:80%; padding:10px; background:#0f172a; border:1px solid #475569; color:white; border-radius:6px; margin-bottom: 10px;"><br>
                         <input type="submit" value="Entrar no Dashboard" style="background: #22c55e; color: white; padding: 10px 20px; font-weight: bold; border: none; border-radius:6px; cursor: pointer;">
                     </form>
 
-                    <h3>Novo por aqui? Cadastre-se</h3>
+                    <h3>Cadastrar-se</h3>
                     <form method="POST" action="/cadastrar">
                         <input type="text" name="nome" placeholder="Nome Completo" required style="width:100%; padding:10px; margin-bottom:10px; background:#0f172a; border:1px solid #475569; color:white; border-radius:6px;"><br>
                         <input type="text" name="cpf" placeholder="CPF" required style="width:100%; padding:10px; margin-bottom:10px; background:#0f172a; border:1px solid #475569; color:white; border-radius:6px;"><br>
                         <input type="text" name="pix" placeholder="Chave Pix para Resgates" required style="width:100%; padding:10px; margin-bottom:10px; background:#0f172a; border:1px solid #475569; color:white; border-radius:6px;"><br>
-                        <input type="text" name="telefone" placeholder="Telefone (com DDD)" required style="width:100%; padding:10px; margin-bottom:10px; background:#0f172a; border:1px solid #475569; color:white; border-radius:6px;"><br>
+                        <input type="text" name="telefone" placeholder="Telefone" required style="width:100%; padding:10px; margin-bottom:10px; background:#0f172a; border:1px solid #475569; color:white; border-radius:6px;"><br>
                         <input type="email" name="email" placeholder="E-mail" required style="width:100%; padding:10px; margin-bottom:20px; background:#0f172a; border:1px solid #475569; color:white; border-radius:6px;"><br>
-                        <input type="submit" value="Criar Conta e Acessar" style="width:100%; background: #38bdf8; color: #0f172a; padding: 12px; font-weight: bold; border: none; border-radius:6px; cursor: pointer;">
+                        <input type="submit" value="Criar Conta" style="width:100%; background: #38bdf8; color: #0f172a; padding: 12px; font-weight: bold; border: none; border-radius:6px; cursor: pointer;">
                     </form>
                 </div>
             </body>
@@ -153,25 +164,55 @@ class WebAppHandler(BaseHTTPRequestHandler):
 
                 mp_token = get_config('mp_access_token')
                 preco_sorte = get_config('preco_numero_sorte')
+                planos = get_config('planos_investimento')
+
+                conn = sqlite3.connect('multilucro.db', check_same_thread=False)
+                cursor = conn.cursor()
+                cursor.execute("SELECT SUM(saldo_investido), SUM(arrecadado_sorteios) FROM caixa WHERE id = 1")
+                caixa = cursor.fetchone()
+                cursor.execute("SELECT id, ganhador_id, numero_sorteado, premio, data FROM lottery_history")
+                historico = cursor.fetchall()
+                conn.close()
 
                 html = f"""
                 <html>
                 <head><title>Painel Administrativo - {fantasia}</title></head>
                 <body style="font-family: Arial; padding: 30px; background: #0f172a; color: #f8fafc;">
-                    <div style="max-width: 600px; margin: auto; background: #1e293b; padding: 30px; border-radius: 12px;">
-                        <h2>⚙️ Painel de Configurações Gerais</h2>
+                    <div style="max-width: 700px; margin: auto; background: #1e293b; padding: 30px; border-radius: 12px;">
+                        <h2>⚙️ Painel de Configurações e Sorteios</h2>
                         <form method="POST" action="/admin_save">
                             <label><b>Mercado Pago Access Token:</b></label><br>
-                            <input type="text" name="mp_access_token" value="{mp_token}" style="width: 100%; padding: 8px; margin-bottom: 15px; background:#0f172a; color:#fff; border:1px solid #475569;"><br>
+                            <input type="text" name="mp_access_token" value="{mp_token}" style="width: 100%; padding: 8px; margin-bottom: 10px; background:#0f172a; color:#fff; border:1px solid #475569;"><br>
                             
                             <label><b>Nome Fantasia:</b></label><br>
-                            <input type="text" name="nome_fantasia" value="{fantasia}" style="width: 100%; padding: 8px; margin-bottom: 15px; background:#0f172a; color:#fff; border:1px solid #475569;"><br>
+                            <input type="text" name="nome_fantasia" value="{fantasia}" style="width: 100%; padding: 8px; margin-bottom: 10px; background:#0f172a; color:#fff; border:1px solid #475569;"><br>
 
                             <label><b>Preço do Número da Sorte (R$):</b></label><br>
-                            <input type="text" name="preco_numero_sorte" value="{preco_sorte}" style="width: 100%; padding: 8px; margin-bottom: 25px; background:#0f172a; color:#fff; border:1px solid #475569;"><br>
+                            <input type="text" name="preco_numero_sorte" value="{preco_sorte}" style="width: 100%; padding: 8px; margin-bottom: 10px; background:#0f172a; color:#fff; border:1px solid #475569;"><br>
+
+                            <label><b>Gestão de Planos de Investimento:</b></label><br>
+                            <input type="text" name="planos_investimento" value="{planos}" style="width: 100%; padding: 8px; margin-bottom: 20px; background:#0f172a; color:#fff; border:1px solid #475569;"><br>
                             
-                            <input type="submit" value="Salvar Configurações" style="background: #22c55e; color: white; padding: 12px 20px; border: none; border-radius:6px; cursor: pointer; width:100%;">
+                            <input type="submit" value="Salvar Configurações" style="background: #22c55e; color: white; padding: 12px; border: none; border-radius:6px; cursor: pointer; width:100%;">
                         </form>
+
+                        <hr style="border: 0; border-top: 1px solid #334155; margin: 30px 0;">
+                        <h3>📊 Gestão de Sorteios & Caixa</h3>
+                        <p>Total Investido em Caixa: R$ {caixa[0] or 0.0:.2f}</p>
+                        <p>Total Arrecadado Sorteios: R$ {caixa[1] or 0.0:.2f}</p>
+                        
+                        <form method="POST" action="/realizar_sorteio">
+                            <input type="submit" value="Executar Sorteio Semanal (Probabilidade < 5%)" style="background: #eab308; color: #0f172a; font-weight:bold; padding: 12px; width:100%; border:none; border-radius:6px; cursor:pointer;">
+                        </form>
+
+                        <h3 style="margin-top: 30px;">🏆 Histórico de Sorteios</h3>
+                        <ul>
+                """
+                for h in historico:
+                    html += f"<li>Sorteio #{h[0]} | Ganhador ID: {h[1]} | Número: {h[2]} | Prêmio: R$ {h[3]:.2f} | Data: {h[4]}</li>"
+                
+                html += f"""
+                        </ul>
                         <br><a href="/" style="color: #38bdf8;">Voltar à Página Inicial</a>
                     </div>
                 </body>
@@ -211,13 +252,13 @@ class WebAppHandler(BaseHTTPRequestHandler):
             <body style="font-family: Arial; padding: 30px; background: #0f172a; color: #f8fafc;">
                 <div style="max-width: 700px; margin: auto; background: #1e293b; padding: 30px; border-radius: 12px;">
                     <h2>👤 Painel de Controle - Olá, {nome_usuario} (ID: {user_id})</h2>
-                    <a href="/" style="color: #ef4444; text-decoration: none;">Sair / Trocar Conta</a>
+                    <a href="/" style="color: #ef4444; text-decoration: none;">Sair</a>
                     <hr style="border: 0; border-top: 1px solid #334155; margin: 20px 0;">
 
                     <h3>💰 Realizar Novo Investimento</h3>
                     <form method="POST" action="/investir">
                         <input type="hidden" name="user_id" value="{user_id}">
-                        <input type="number" step="0.01" name="valor" placeholder="Valor do Investimento (R$)" required style="width:100%; padding:10px; margin-bottom:10px; background:#0f172a; border:1px solid #475569; color:white; border-radius:6px;"><br>
+                        <input type="number" step="0.01" name="valor" placeholder="Valor (R$)" required style="width:100%; padding:10px; margin-bottom:10px; background:#0f172a; border:1px solid #475569; color:white; border-radius:6px;"><br>
                         <select name="prazo" style="width:100%; padding:10px; margin-bottom:10px; background:#0f172a; border:1px solid #475569; color:white; border-radius:6px;">
                             <option value="7_1">1 Semana (1% de Lucro)</option>
                             <option value="30_3">1 Mês (3% de Lucro)</option>
@@ -231,7 +272,7 @@ class WebAppHandler(BaseHTTPRequestHandler):
                     <h3 style="margin-top: 30px;">🎟️ Números da Sorte (R$ {preco_sorte:.2f} cada)</h3>
                     <form method="POST" action="/comprar_sorte">
                         <input type="hidden" name="user_id" value="{user_id}">
-                        <input type="number" name="qtd" placeholder="Quantidade de números desejados" required style="width:100%; padding:10px; margin-bottom:10px; background:#0f172a; border:1px solid #475569; color:white; border-radius:6px;"><br>
+                        <input type="number" name="qtd" placeholder="Quantidade de números" required style="width:100%; padding:10px; margin-bottom:10px; background:#0f172a; border:1px solid #475569; color:white; border-radius:6px;"><br>
                         <input type="submit" value="Comprar Números (Gerar Pix)" style="background: #eab308; color: #0f172a; font-weight:bold; padding: 12px; width:100%; border:none; border-radius:6px; cursor:pointer;">
                     </form>
 
@@ -245,12 +286,28 @@ class WebAppHandler(BaseHTTPRequestHandler):
                     </ul>
 
                     <h3 style="margin-top: 30px;">🎟️ Seus Números da Sorte Ativos</h3>
-                    <p style="background: #0f172a; padding: 10px; border-radius: 6px;">{', '.join([str(b[0]) for b in bilhetes]) if bilhetes else 'Nenhum número adquirido para este sorteio.'}</p>
+                    <p style="background: #0f172a; padding: 10px; border-radius: 6px;">{', '.join([str(b[0]) for b in bilhetes]) if bilhetes else 'Nenhum número adquirido.'}</p>
                 </div>
             </body>
             </html>
             """
             self.wfile.write(html.encode("utf-8"))
+
+        # 4. Rota de checagem de status do pagamento para validação automática (AJAX Polling)
+        elif path == '/check_status':
+            payment_id = query.get('payment_id', [''])[0]
+            mp_token = get_config('mp_access_token')
+            status = "pendente"
+            if payment_id and not payment_id.startswith('simulado'):
+                headers = {"Authorization": f"Bearer {mp_token}"}
+                res = requests.get(f"https://api.mercadopago.com/v1/payments/{payment_id}", headers=headers)
+                if res.status_code == 200:
+                    status = res.json().get("status", "pendente")
+            
+            self.send_response(200)
+            self.send_header("Content-type", "application/json")
+            self.end_headers()
+            self.wfile.write(f'{{"status": "{status}"}}'.encode("utf-8"))
 
     def do_POST(self):
         parsed_path = urllib.parse.urlparse(self.path)
@@ -284,11 +341,46 @@ class WebAppHandler(BaseHTTPRequestHandler):
                 set_config('nome_fantasia', params['nome_fantasia'][0])
             if 'preco_numero_sorte' in params:
                 set_config('preco_numero_sorte', params['preco_numero_sorte'][0])
+            if 'planos_investimento' in params:
+                set_config('planos_investimento', params['planos_investimento'][0])
 
             self.send_response(200)
             self.send_header("Content-type", "text/html; charset=utf-8")
             self.end_headers()
-            self.wfile.write(b"<body style='font-family:Arial; background:#0f172a; color:#fff; text-align:center; padding:50px;'><h3>Configuracoes salvas com sucesso!</h3><a href='/admin' style='color:#38bdf8;'>Voltar ao Painel Admin</a></body>")
+            self.wfile.write(b"<body style='font-family:Arial; background:#0f172a; color:#fff; text-align:center; padding:50px;'><h3>Configuracoes salvas!</h3><a href='/admin' style='color:#38bdf8;'>Voltar</a></body>")
+
+        elif path == '/realizar_sorteio':
+            conn = sqlite3.connect('multilucro.db', check_same_thread=False)
+            cursor = conn.cursor()
+            cursor.execute("SELECT saldo_investido, arrecadado_sorteios FROM caixa WHERE id = 1")
+            caixa = cursor.fetchone()
+            montante_investido = caixa[0] or 0.0
+            montante_sorteios = caixa[1] or 0.0
+
+            # Regra de premiação: 40% dos sorteios + 8% do saldo investido em caixa
+            premio = (montante_sorteios * 0.40) + (montante_investido * 0.08)
+
+            cursor.execute("SELECT ticket_id, user_id, numero FROM lottery_tickets WHERE status = 'ativo'")
+            bilhetes = cursor.fetchall()
+
+            ganhador_id = None
+            numero_sorteado = 0
+            if bilhetes and random.random() < 0.05: # Probabilidade de ganho menor que 5%
+                sorteado = random.choice(bilhetes)
+                ganhador_id = sorteado[1]
+                numero_sorteado = sorteado[2]
+                cursor.execute("INSERT INTO lottery_history (ganhador_id, numero_sorteado, premio) VALUES (?, ?, ?)", (ganhador_id, numero_sorteado, premio))
+            
+            cursor.execute("UPDATE lottery_tickets SET status = 'encerrado'")
+            cursor.execute("UPDATE caixa SET arrecadado_sorteios = 0.0 WHERE id = 1") # Zera o arrecadado do sorteio atual
+            conn.commit()
+            conn.close()
+
+            self.send_response(200)
+            self.send_header("Content-type", "text/html; charset=utf-8")
+            self.end_headers()
+            msg = f"Sorteio realizado! Ganhador ID: {ganhador_id or 'Acumulado/Nenhum ganhador (<5% de chance)'} | Prêmio: R$ {premio:.2f}"
+            self.wfile.write(f"<body style='font-family:Arial; background:#0f172a; color:#fff; text-align:center; padding:50px;'><h3>{msg}</h3><a href='/admin' style='color:#38bdf8;'>Voltar</a></body>".encode("utf-8"))
 
         elif path == '/investir':
             user_id = params.get('user_id', ['1'])[0]
@@ -299,7 +391,6 @@ class WebAppHandler(BaseHTTPRequestHandler):
             mp_token = get_config('mp_access_token')
             fantasia = get_config('nome_fantasia')
             
-            # Cabeçalho obrigatório contendo o X-Idempotency-Key exigido pelo Mercado Pago
             headers = {
                 "Authorization": f"Bearer {mp_token}",
                 "Content-Type": "application/json",
@@ -314,31 +405,61 @@ class WebAppHandler(BaseHTTPRequestHandler):
             
             response = requests.post("https://api.mercadopago.com/v1/payments", json=payload, headers=headers)
             qr_code = ""
+            qr_base64 = ""
+            payment_id = ""
             erro_msg = ""
             if response.status_code == 201:
                 data = response.json()
-                qr_code = data.get("point_of_interaction", {}).get("transaction_data", {}).get("qr_code", "")
+                payment_id = str(data.get("id"))
+                t_data = data.get("point_of_interaction", {}).get("transaction_data", {})
+                qr_code = t_data.get("qr_code", "")
+                qr_base64 = t_data.get("qr_code_base64", "")
             else:
                 erro_msg = response.text
 
             conn = sqlite3.connect('multilucro.db', check_same_thread=False)
             cursor = conn.cursor()
-            cursor.execute("INSERT INTO investments (user_id, valor, prazo_dias, lucro_pct, status) VALUES (?, ?, ?, ?, 'pendente')", (user_id, valor, prazo, lucro))
+            cursor.execute("INSERT INTO investments (user_id, valor, prazo_dias, lucro_pct, payment_id, status) VALUES (?, ?, ?, ?, ?, 'pendente')", (user_id, valor, prazo, lucro, payment_id))
             conn.commit()
             conn.close()
 
+            # Tela de pagamento com QR Code visual e validação automática por Polling
+            html = f"""
+            <body style="font-family:Arial; background:#0f172a; color:#fff; padding:30px; text-align:center;">
+                <h2>🧾 Efetue o Pagamento via Pix</h2>
+                <p>Valor: R$ {valor:.2f}</p>
+                {"<img src='data:image/png;base64," + qr_base64 + "' style='width:200px; height:200px; background:#fff; padding:10px; border-radius:8px;'/>" if qr_base64 else ""}
+                <p><b>PIX Copia e Cola:</b></p>
+                <textarea style="width:80%; height:80px; background:#1e293b; color:#fff; padding:10px;">{qr_code or 'Erro: ' + erro_msg}</textarea>
+                <p id="status" style="color:#eab308; font-weight:bold; margin-top:20px;">Aguardando confirmação do pagamento...</p>
+                
+                <script>
+                    const paymentId = "{payment_id}";
+                    const userId = "{user_id}";
+                    
+                    function checkPayment() {{
+                        if (!paymentId) return;
+                        fetch('/check_status?payment_id=' + paymentId)
+                            .then(response => response.json())
+                            .then(data => {{
+                                if (data.status === 'approved') {{
+                                    document.getElementById('status').innerHTML = "Pagamento Aprovado com Sucesso! Redirecionando...";
+                                    document.getElementById('status').style.color = "#22c55e";
+                                    setTimeout(() => {{
+                                        window.location.href = '/dashboard?user_id=' + userId;
+                                    }}, 2000);
+                                }}
+                            }});
+                    }}
+                    setInterval(checkPayment, 3000);
+                </script>
+                <br><br><a href="/dashboard?user_id={user_id}" style="color:#38bdf8;">Voltar ao Dashboard</a>
+            </body>
+            """
             self.send_response(200)
             self.send_header("Content-type", "text/html; charset=utf-8")
             self.end_headers()
-            self.wfile.write(f"""
-            <body style="font-family:Arial; background:#0f172a; color:#fff; padding:30px; text-align:center;">
-                <h2>🧾 Fatura Pix Gerada</h2>
-                <p>Valor: R$ {valor:.2f}</p>
-                <p><b>PIX Copia e Cola:</b></p>
-                <textarea style="width:100%; height:120px; background:#1e293b; color:#fff; padding:10px;">{qr_code or 'Erro retornado pelo Mercado Pago: ' + erro_msg}</textarea><br><br>
-                <a href="/dashboard?user_id={user_id}" style="color:#38bdf8;">Voltar ao Dashboard</a>
-            </body>
-            """.encode("utf-8"))
+            self.wfile.write(html.encode("utf-8"))
 
         elif path == '/comprar_sorte':
             user_id = params.get('user_id', ['1'])[0]
@@ -349,7 +470,6 @@ class WebAppHandler(BaseHTTPRequestHandler):
             mp_token = get_config('mp_access_token')
             fantasia = get_config('nome_fantasia')
             
-            # Cabeçalho obrigatório contendo o X-Idempotency-Key exigido pelo Mercado Pago
             headers = {
                 "Authorization": f"Bearer {mp_token}",
                 "Content-Type": "application/json",
@@ -363,10 +483,15 @@ class WebAppHandler(BaseHTTPRequestHandler):
             }
             response = requests.post("https://api.mercadopago.com/v1/payments", json=payload, headers=headers)
             qr_code = ""
+            qr_base64 = ""
+            payment_id = ""
             erro_msg = ""
             if response.status_code == 201:
                 data = response.json()
-                qr_code = data.get("point_of_interaction", {}).get("transaction_data", {}).get("qr_code", "")
+                payment_id = str(data.get("id"))
+                t_data = data.get("point_of_interaction", {}).get("transaction_data", {})
+                qr_code = t_data.get("qr_code", "")
+                qr_base64 = t_data.get("qr_code_base64", "")
             else:
                 erro_msg = response.text
 
@@ -379,18 +504,42 @@ class WebAppHandler(BaseHTTPRequestHandler):
             conn.commit()
             conn.close()
 
+            html = f"""
+            <body style="font-family:Arial; background:#0f172a; color:#fff; padding:30px; text-align:center;">
+                <h2>🎟️ Pagamento dos Números da Sorte</h2>
+                <p>Total: R$ {total:.2f}</p>
+                {"<img src='data:image/png;base64," + qr_base64 + "' style='width:200px; height:200px; background:#fff; padding:10px; border-radius:8px;'/>" if qr_base64 else ""}
+                <p><b>PIX Copia e Cola:</b></p>
+                <textarea style="width:80%; height:80px; background:#1e293b; color:#fff; padding:10px;">{qr_code or 'Erro: ' + erro_msg}</textarea>
+                <p id="status" style="color:#eab308; font-weight:bold; margin-top:20px;">Aguardando confirmação do pagamento...</p>
+                
+                <script>
+                    const paymentId = "{payment_id}";
+                    const userId = "{user_id}";
+                    
+                    function checkPayment() {{
+                        if (!paymentId) return;
+                        fetch('/check_status?payment_id=' + paymentId)
+                            .then(response => response.json())
+                            .then(data => {{
+                                if (data.status === 'approved') {{
+                                    document.getElementById('status').innerHTML = "Pagamento Aprovado com Sucesso! Redirecionando...";
+                                    document.getElementById('status').style.color = "#22c55e";
+                                    setTimeout(() => {{
+                                        window.location.href = '/dashboard?user_id=' + userId;
+                                    }}, 2000);
+                                }}
+                            }});
+                    }}
+                    setInterval(checkPayment, 3000);
+                </script>
+                <br><br><a href="/dashboard?user_id={user_id}" style="color:#38bdf8;">Voltar ao Dashboard</a>
+            </body>
+            """
             self.send_response(200)
             self.send_header("Content-type", "text/html; charset=utf-8")
             self.end_headers()
-            self.wfile.write(f"""
-            <body style="font-family:Arial; background:#0f172a; color:#fff; padding:30px; text-align:center;">
-                <h2>🎟️ {qtd} Números da Sorte Adquiridos!</h2>
-                <p>Total a Pagar via Pix: R$ {total:.2f}</p>
-                <p><b>PIX Copia e Cola:</b></p>
-                <textarea style="width:100%; height:120px; background:#1e293b; color:#fff; padding:10px;">{qr_code or 'Erro retornado pelo Mercado Pago: ' + erro_msg}</textarea><br><br>
-                <a href="/dashboard?user_id={user_id}" style="color:#38bdf8;">Voltar ao Dashboard</a>
-            </body>
-            """.encode("utf-8"))
+            self.wfile.write(html.encode("utf-8"))
 
 def run_web_server():
     port = int(os.environ.get("PORT", 10000))
