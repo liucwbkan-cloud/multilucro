@@ -63,8 +63,10 @@ def init_db():
         CREATE TABLE IF NOT EXISTS lottery_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             ganhador_id INTEGER,
+            ganhador_nome TEXT,
             numero_sorteado INTEGER,
             premio REAL,
+            acumulado TEXT DEFAULT 'Não',
             data TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
@@ -119,7 +121,7 @@ class WebAppHandler(BaseHTTPRequestHandler):
             <body style="font-family: Arial; padding: 40px; background: #0f172a; color: #f8fafc; text-align: center;">
                 <div style="max-width: 600px; margin: auto; background: #1e293b; padding: 40px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.6);">
                     <h1 style="color: #38bdf8;">💎 {fantasia}</h1>
-                    <p style="color: #94a3b8; font-size: 16px;">Invista com rentabilidade e participe dos nossos sorteios semanais!</p>
+                    <p style="color: #94a3b8; font-size: 16px;">Invista com rentabilidade e participe dos nossos sorteios semanais exclusivos!</p>
                     <hr style="border: 0; border-top: 1px solid #334155; margin: 30px 0;">
                     
                     <h3>Fazer Login</h3>
@@ -170,7 +172,7 @@ class WebAppHandler(BaseHTTPRequestHandler):
                 cursor = conn.cursor()
                 cursor.execute("SELECT SUM(saldo_investido), SUM(arrecadado_sorteios) FROM caixa WHERE id = 1")
                 caixa = cursor.fetchone()
-                cursor.execute("SELECT id, ganhador_id, numero_sorteado, premio, data FROM lottery_history")
+                cursor.execute("SELECT id, ganhador_id, ganhador_nome, numero_sorteado, premio, acumulado, data FROM lottery_history ORDER BY id DESC")
                 historico = cursor.fetchall()
                 conn.close()
 
@@ -178,41 +180,42 @@ class WebAppHandler(BaseHTTPRequestHandler):
                 <html>
                 <head><title>Painel Administrativo - {fantasia}</title></head>
                 <body style="font-family: Arial; padding: 30px; background: #0f172a; color: #f8fafc;">
-                    <div style="max-width: 700px; margin: auto; background: #1e293b; padding: 30px; border-radius: 12px;">
-                        <h2>⚙️ Painel de Configurações e Sorteios</h2>
+                    <div style="max-width: 800px; margin: auto; background: #1e293b; padding: 30px; border-radius: 12px;">
+                        <h2>⚙️ Painel Administrativo e Gestão de Sorteios</h2>
                         <form method="POST" action="/admin_save">
                             <label><b>Mercado Pago Access Token:</b></label><br>
-                            <input type="text" name="mp_access_token" value="{mp_token}" style="width: 100%; padding: 8px; margin-bottom: 10px; background:#0f172a; color:#fff; border:1px solid #475569;"><br>
+                            <input type="text" name="mp_access_token" value="{mp_token}" style="width: 100%; padding: 8px; margin-bottom: 10px; background:#0f172a; color:#fff; border:1px solid #475569; border-radius:6px;"><br>
                             
                             <label><b>Nome Fantasia:</b></label><br>
-                            <input type="text" name="nome_fantasia" value="{fantasia}" style="width: 100%; padding: 8px; margin-bottom: 10px; background:#0f172a; color:#fff; border:1px solid #475569;"><br>
+                            <input type="text" name="nome_fantasia" value="{fantasia}" style="width: 100%; padding: 8px; margin-bottom: 10px; background:#0f172a; color:#fff; border:1px solid #475569; border-radius:6px;"><br>
 
                             <label><b>Preço do Número da Sorte (R$):</b></label><br>
-                            <input type="text" name="preco_numero_sorte" value="{preco_sorte}" style="width: 100%; padding: 8px; margin-bottom: 10px; background:#0f172a; color:#fff; border:1px solid #475569;"><br>
+                            <input type="text" name="preco_numero_sorte" value="{preco_sorte}" style="width: 100%; padding: 8px; margin-bottom: 10px; background:#0f172a; color:#fff; border:1px solid #475569; border-radius:6px;"><br>
 
                             <label><b>Gestão de Planos de Investimento:</b></label><br>
-                            <input type="text" name="planos_investimento" value="{planos}" style="width: 100%; padding: 8px; margin-bottom: 20px; background:#0f172a; color:#fff; border:1px solid #475569;"><br>
+                            <input type="text" name="planos_investimento" value="{planos}" style="width: 100%; padding: 8px; margin-bottom: 20px; background:#0f172a; color:#fff; border:1px solid #475569; border-radius:6px;"><br>
                             
-                            <input type="submit" value="Salvar Configurações" style="background: #22c55e; color: white; padding: 12px; border: none; border-radius:6px; cursor: pointer; width:100%;">
+                            <input type="submit" value="Salvar Configurações" style="background: #22c55e; color: white; padding: 12px; border: none; border-radius:6px; cursor: pointer; width:100%; font-weight:bold;">
                         </form>
 
                         <hr style="border: 0; border-top: 1px solid #334155; margin: 30px 0;">
-                        <h3>📊 Gestão de Sorteios & Caixa</h3>
-                        <p>Total Investido em Caixa: R$ {caixa[0] or 0.0:.2f}</p>
-                        <p>Total Arrecadado Sorteios: R$ {caixa[1] or 0.0:.2f}</p>
+                        <h3>📊 Caixa Atual</h3>
+                        <p>Total Investido: R$ {caixa[0] or 0.0:.2f}</p>
+                        <p>Total Arrecadado para Sorteio: R$ {caixa[1] or 0.0:.2f}</p>
                         
                         <form method="POST" action="/realizar_sorteio">
-                            <input type="submit" value="Executar Sorteio Semanal (Probabilidade < 5%)" style="background: #eab308; color: #0f172a; font-weight:bold; padding: 12px; width:100%; border:none; border-radius:6px; cursor:pointer;">
+                            <input type="submit" value="Executar Sorteio Semanal" style="background: #eab308; color: #0f172a; font-weight:bold; padding: 12px; width:100%; border:none; border-radius:6px; cursor:pointer;">
                         </form>
 
-                        <h3 style="margin-top: 30px;">🏆 Histórico de Sorteios</h3>
-                        <ul>
+                        <h3 style="margin-top: 30px;">🏆 Histórico Geral de Sorteios</h3>
+                        <div style="background:#0f172a; padding:15px; border-radius:8px; max-height:300px; overflow-y:auto;">
                 """
                 for h in historico:
-                    html += f"<li>Sorteio #{h[0]} | Ganhador ID: {h[1]} | Número: {h[2]} | Prêmio: R$ {h[3]:.2f} | Data: {h[4]}</li>"
+                    ganhador_txt = f"Ganhador: {h[2]} (ID: {h[1]}) - Número: {h[3]}" if h[1] else "Acumulado (Nenhum ganhador)"
+                    html += f"<p style='border-bottom:1px solid #334155; padding-bottom:8px;'>Sorteio #{h[0]} | {ganhador_txt} | Prêmio: R$ {h[4]:.2f} | Acumulado: {h[5]} | Data: {h[6]}</p>"
                 
                 html += f"""
-                        </ul>
+                        </div>
                         <br><a href="/" style="color: #38bdf8;">Voltar à Página Inicial</a>
                     </div>
                 </body>
@@ -224,7 +227,7 @@ class WebAppHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(b"Usuario ou senha incorretos.")
 
-        # 3. Dashboard do Usuário
+        # 3. Dashboard do Usuário (Com Histórico de Sorteios e Gestão Organizada)
         elif path == '/dashboard':
             user_id = query.get('user_id', ['1'])[0]
             conn = sqlite3.connect('multilucro.db', check_same_thread=False)
@@ -242,6 +245,15 @@ class WebAppHandler(BaseHTTPRequestHandler):
             
             cursor.execute("SELECT numero FROM lottery_tickets WHERE user_id = ? AND status = 'ativo'", (user_id,))
             bilhetes = cursor.fetchall()
+
+            cursor.execute("SELECT arrecadado_sorteios, saldo_investido FROM caixa WHERE id = 1")
+            caixa_dados = cursor.fetchone()
+            arrecadado_atual = caixa_dados[0] or 0.0
+            investido_atual = caixa_dados[1] or 0.0
+            estimativa_premio = (arrecadado_atual * 0.40) + (investido_atual * 0.08)
+
+            cursor.execute("SELECT id, ganhador_id, numero_sorteado, premio, acumulado, data FROM lottery_history ORDER BY id DESC LIMIT 5")
+            historico_sorteios = cursor.fetchall()
             conn.close()
 
             preco_sorte = float(get_config('preco_numero_sorte'))
@@ -249,51 +261,72 @@ class WebAppHandler(BaseHTTPRequestHandler):
             html = f"""
             <html>
             <head><title>Dashboard - {fantasia}</title></head>
-            <body style="font-family: Arial; padding: 30px; background: #0f172a; color: #f8fafc;">
-                <div style="max-width: 700px; margin: auto; background: #1e293b; padding: 30px; border-radius: 12px;">
-                    <h2>👤 Painel de Controle - Olá, {nome_usuario} (ID: {user_id})</h2>
-                    <a href="/" style="color: #ef4444; text-decoration: none;">Sair</a>
+            <body style="font-family: Arial; padding: 20px; background: #0f172a; color: #f8fafc;">
+                <div style="max-width: 750px; margin: auto; background: #1e293b; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5);">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <h2>👤 Olá, {nome_usuario}</h2>
+                        <a href="/" style="background:#ef4444; color:#fff; padding:6px 12px; border-radius:6px; text-decoration:none; font-size:14px;">Sair</a>
+                    </div>
                     <hr style="border: 0; border-top: 1px solid #334155; margin: 20px 0;">
 
-                    <h3>💰 Realizar Novo Investimento</h3>
-                    <form method="POST" action="/investir">
-                        <input type="hidden" name="user_id" value="{user_id}">
-                        <input type="number" step="0.01" name="valor" placeholder="Valor (R$)" required style="width:100%; padding:10px; margin-bottom:10px; background:#0f172a; border:1px solid #475569; color:white; border-radius:6px;"><br>
-                        <select name="prazo" style="width:100%; padding:10px; margin-bottom:10px; background:#0f172a; border:1px solid #475569; color:white; border-radius:6px;">
-                            <option value="7_1">1 Semana (1% de Lucro)</option>
-                            <option value="30_3">1 Mês (3% de Lucro)</option>
-                            <option value="90_5">3 Meses (5% de Lucro)</option>
-                            <option value="180_8">6 Meses (8% de Lucro)</option>
-                            <option value="365_20">1 Ano (20% de Lucro)</option>
-                        </select><br>
-                        <input type="submit" value="Gerar Pix para Investir" style="background: #22c55e; color: white; padding: 12px; width:100%; border:none; border-radius:6px; cursor:pointer; font-weight:bold;">
-                    </form>
-
-                    <h3 style="margin-top: 30px;">🎟️ Números da Sorte (R$ {preco_sorte:.2f} cada)</h3>
-                    <form method="POST" action="/comprar_sorte">
-                        <input type="hidden" name="user_id" value="{user_id}">
-                        <input type="number" name="qtd" placeholder="Quantidade de números" required style="width:100%; padding:10px; margin-bottom:10px; background:#0f172a; border:1px solid #475569; color:white; border-radius:6px;"><br>
-                        <input type="submit" value="Comprar Números (Gerar Pix)" style="background: #eab308; color: #0f172a; font-weight:bold; padding: 12px; width:100%; border:none; border-radius:6px; cursor:pointer;">
-                    </form>
-
-                    <h3 style="margin-top: 30px;">📊 Seus Investimentos Ativos</h3>
-                    <ul style="line-height: 1.8;">
+                    <!-- Bloco de Investimentos -->
+                    <div style="background:#0f172a; padding:20px; border-radius:8px; margin-bottom:20px;">
+                        <h3>💰 Gestão de Investimentos</h3>
+                        <form method="POST" action="/investir">
+                            <input type="hidden" name="user_id" value="{user_id}">
+                            <input type="number" step="0.01" name="valor" placeholder="Valor do Investimento (R$)" required style="width:100%; padding:10px; margin-bottom:10px; background:#1e293b; border:1px solid #475569; color:white; border-radius:6px;"><br>
+                            <select name="prazo" style="width:100%; padding:10px; margin-bottom:10px; background:#1e293b; border:1px solid #475569; color:white; border-radius:6px;">
+                                <option value="7_1">1 Semana (1% de Lucro)</option>
+                                <option value="30_3">1 Mês (3% de Lucro)</option>
+                                <option value="90_5">3 Meses (5% de Lucro)</option>
+                                <option value="180_8">6 Meses (8% de Lucro)</option>
+                                <option value="365_20">1 Ano (20% de Lucro)</option>
+                            </select><br>
+                            <input type="submit" value="Investir Agora (Gerar Pix)" style="background: #22c55e; color: white; padding: 12px; width:100%; border:none; border-radius:6px; cursor:pointer; font-weight:bold;">
+                        </form>
+                        <h4 style="margin-top:20px;">Seus Investimentos Ativos:</h4>
+                        <ul style="line-height: 1.6; padding-left:20px;">
             """
             for i in invs:
                 html += f"<li>ID #{i[0]} | R$ {i[1]:.2f} | Prazo: {i[2]}d | Lucro: {i[3]}% | Status: <b>{i[4]}</b></li>"
             
             html += f"""
-                    </ul>
+                        </ul>
+                    </div>
 
-                    <h3 style="margin-top: 30px;">🎟️ Seus Números da Sorte Ativos</h3>
-                    <p style="background: #0f172a; padding: 10px; border-radius: 6px;">{', '.join([str(b[0]) for b in bilhetes]) if bilhetes else 'Nenhum número adquirido.'}</p>
+                    <!-- Bloco de Números da Sorte -->
+                    <div style="background:#0f172a; padding:20px; border-radius:8px; margin-bottom:20px;">
+                        <h3>🎟️ Números da Sorte (R$ {preco_sorte:.2f} cada)</h3>
+                        <p style="color:#38bdf8; font-weight:bold;">Estimativa de Premiação para o Próximo Sorteio: R$ {estimativa_premio:.2f}</p>
+                        <form method="POST" action="/comprar_sorte">
+                            <input type="hidden" name="user_id" value="{user_id}">
+                            <input type="number" name="qtd" placeholder="Quantidade de números" required style="width:100%; padding:10px; margin-bottom:10px; background:#1e293b; border:1px solid #475569; color:white; border-radius:6px;"><br>
+                            <input type="submit" value="Comprar Números (Gerar Pix)" style="background: #eab308; color: #0f172a; font-weight:bold; padding: 12px; width:100%; border:none; border-radius:6px; cursor:pointer;">
+                        </form>
+                        <h4 style="margin-top:20px;">Seus Números Ativos para o Sorteio:</h4>
+                        <div style="background:#1e293b; padding:10px; border-radius:6px; word-break:break-all;">
+                            {', '.join([str(b[0]) for b in bilhetes]) if bilhetes else 'Nenhum número adquirido para o sorteio atual.'}
+                        </div>
+                    </div>
+
+                    <!-- Bloco de Histórico de Sorteios -->
+                    <div style="background:#0f172a; padding:20px; border-radius:8px;">
+                        <h3>🏆 Histórico Recente de Sorteios</h3>
+                        <div style="max-height:200px; overflow-y:auto;">
+            """
+            for h in historico_sorteios:
+                status_ganho = f"Ganhador ID: {h[1]} (Num: {h[2]})" if h[1] else "Acumulado"
+                html += f"<p style='border-bottom:1px solid #334155; padding-bottom:5px; font-size:14px;'>Sorteio #{h[0]} | {status_ganho} | Prêmio: R$ {h[3]:.2f} | Acumulado: {h[4]} | Data: {h[5]}</p>"
+
+            html += f"""
+                        </div>
+                    </div>
                 </div>
             </body>
             </html>
             """
             self.wfile.write(html.encode("utf-8"))
 
-        # 4. Rota de checagem de status do pagamento para validação automática (AJAX Polling)
         elif path == '/check_status':
             payment_id = query.get('payment_id', [''])[0]
             mp_token = get_config('mp_access_token')
@@ -357,29 +390,38 @@ class WebAppHandler(BaseHTTPRequestHandler):
             montante_investido = caixa[0] or 0.0
             montante_sorteios = caixa[1] or 0.0
 
-            # Regra de premiação: 40% dos sorteios + 8% do saldo investido em caixa
             premio = (montante_sorteios * 0.40) + (montante_investido * 0.08)
 
             cursor.execute("SELECT ticket_id, user_id, numero FROM lottery_tickets WHERE status = 'ativo'")
             bilhetes = cursor.fetchall()
 
             ganhador_id = None
+            ganhador_nome = None
             numero_sorteado = 0
-            if bilhetes and random.random() < 0.05: # Probabilidade de ganho menor que 5%
+            acumulado = "Não"
+
+            if bilhetes and random.random() < 0.05: # Probabilidade menor que 5%
                 sorteado = random.choice(bilhetes)
                 ganhador_id = sorteado[1]
                 numero_sorteado = sorteado[2]
-                cursor.execute("INSERT INTO lottery_history (ganhador_id, numero_sorteado, premio) VALUES (?, ?, ?)", (ganhador_id, numero_sorteado, premio))
+                cursor.execute("SELECT nome FROM users WHERE user_id = ?", (ganhador_id,))
+                g_nome = cursor.fetchone()
+                ganhador_nome = g_nome[0] if g_nome else "Investidor"
+            else:
+                acumulado = "Sim"
+
+            cursor.execute("INSERT INTO lottery_history (ganhador_id, ganhador_nome, numero_sorteado, premio, acumulado) VALUES (?, ?, ?, ?, ?)", 
+                           (ganhador_id, ganhador_nome, numero_sorteado, premio, acumulado))
             
             cursor.execute("UPDATE lottery_tickets SET status = 'encerrado'")
-            cursor.execute("UPDATE caixa SET arrecadado_sorteios = 0.0 WHERE id = 1") # Zera o arrecadado do sorteio atual
+            cursor.execute("UPDATE caixa SET arrecadado_sorteios = 0.0 WHERE id = 1")
             conn.commit()
             conn.close()
 
             self.send_response(200)
             self.send_header("Content-type", "text/html; charset=utf-8")
             self.end_headers()
-            msg = f"Sorteio realizado! Ganhador ID: {ganhador_id or 'Acumulado/Nenhum ganhador (<5% de chance)'} | Prêmio: R$ {premio:.2f}"
+            msg = f"Sorteio realizado! {'Ganhador: ' + str(ganhador_nome) if ganhador_id else 'Prêmio Acumulado!'} | Prêmio: R$ {premio:.2f}"
             self.wfile.write(f"<body style='font-family:Arial; background:#0f172a; color:#fff; text-align:center; padding:50px;'><h3>{msg}</h3><a href='/admin' style='color:#38bdf8;'>Voltar</a></body>".encode("utf-8"))
 
         elif path == '/investir':
@@ -420,10 +462,10 @@ class WebAppHandler(BaseHTTPRequestHandler):
             conn = sqlite3.connect('multilucro.db', check_same_thread=False)
             cursor = conn.cursor()
             cursor.execute("INSERT INTO investments (user_id, valor, prazo_dias, lucro_pct, payment_id, status) VALUES (?, ?, ?, ?, ?, 'pendente')", (user_id, valor, prazo, lucro, payment_id))
+            cursor.execute("UPDATE caixa SET saldo_investido = saldo_investido + ? WHERE id = 1", (valor,))
             conn.commit()
             conn.close()
 
-            # Tela de pagamento com QR Code visual e validação automática por Polling
             html = f"""
             <body style="font-family:Arial; background:#0f172a; color:#fff; padding:30px; text-align:center;">
                 <h2>🧾 Efetue o Pagamento via Pix</h2>
