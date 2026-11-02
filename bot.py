@@ -4,6 +4,7 @@ import random
 import requests
 import os
 import threading
+import urllib.parse
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, ContextTypes, CommandHandler, CallbackQueryHandler, MessageHandler, filters
@@ -13,29 +14,23 @@ from telegram.request import HTTPXRequest
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-TOKEN = "9224084908:AAEdezPAnFHcc8NPuwtsPG1VEMRxZ1PrDHA"
-# Insira aqui o seu Access Token real do Mercado Pago quando for usar pagamentos reais
-MP_ACCESS_TOKEN = "TEST-0000000000000000-000000-00000000000000000000000000000000-0"
-
-# Servidor HTTP simples para manter a aplicação ativa na nuvem (Render/Railway)
-class SimpleHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header("Content-type", "text/plain")
-        self.end_headers()
-        self.wfile.write(b"Multi Lucro Bot está online na nuvem!")
-
-def run_web_server():
-    port = int(os.environ.get("PORT", 10000))
-    server = HTTPServer(('0.0.0.0', port), SimpleHandler)
-    logger.info(f"Servidor Web rodando na porta {port}")
-    server.serve_forever()
-
-# Inicialização e Atualização Automática do Banco de Dados SQLite
+# Banco de Dados SQLite para Configurações Dinâmicas e Sistema
 def init_db():
-    conn = sqlite3.connect('multilucro.db')
+    conn = sqlite3.connect('multilucro.db', check_same_thread=False)
     cursor = conn.cursor()
     
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS config (
+            chave TEXT PRIMARY KEY,
+            valor TEXT
+        )
+    ''')
+    
+    # Configurações padrão iniciais
+    cursor.execute("INSERT OR IGNORE INTO config (chave, valor) VALUES ('token_telegram', '9224084908:AAEdezPAnFHcc8NPuwtsPG1VEMRxZ1PrDHA')")
+    cursor.execute("INSERT OR IGNORE INTO config (chave, valor) VALUES ('mp_access_token', 'TEST-0000000000000000-000000-00000000000000000000000000000000-0')")
+    cursor.execute("INSERT OR IGNORE INTO config (chave, valor) VALUES ('nome_fantasia', 'Multi Lucro Investimentos')")
+
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY,
@@ -86,6 +81,102 @@ def init_db():
     conn.close()
 
 init_db()
+
+def get_config(chave):
+    conn = sqlite3.connect('multilucro.db', check_same_thread=False)
+    cursor = conn.cursor()
+    cursor.execute("SELECT valor FROM config WHERE chave = ?", (chave,))
+    res = cursor.fetchone()
+    conn.close()
+    return res[0] if res else ""
+
+def set_config(chave, valor):
+    conn = sqlite3.connect('multilucro.db', check_same_thread=False)
+    cursor = conn.cursor()
+    cursor.execute("INSERT OR REPLACE INTO config (chave, valor) VALUES (?, ?)", (chave, valor))
+    conn.commit()
+    conn.close()
+
+# Servidor HTTP com Painel de Configurações Web Protegido (User: admult / Senha: 010407)
+class ConfigHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == '/' or self.path == '/config':
+            auth_header = self.headers.get('Authorization')
+            if auth_header is None or not auth_header.startswith('Basic '):
+                self.send_response(401)
+                self.send_header('WWW-Authenticate', 'Basic realm="Painel de Configuracoes Multi Lucro"')
+                self.end_headers()
+                self.wfile.write(b"Autenticacao necessaria.")
+                return
+
+            import base64
+            auth_decoded = base64.b64decode(auth_header.split()[1]).decode('utf-8')
+            user, pwd = auth_decoded.split(':', 1)
+
+            if user == 'admult' and pwd == '010407':
+                self.send_response(200)
+                self.send_header("Content-type", "text/html; charset=utf-8")
+                self.end_headers()
+
+                t_telegram = get_config('token_telegram')
+                mp_token = get_config('mp_access_token')
+                fantasia = get_config('nome_fantasia')
+
+                html = f"""
+                <html>
+                <head><title>Multi Lucro - Painel de Configurações</title></head>
+                <body style="font-family: Arial; padding: 20px; background: #f4f4f9;">
+                    <h2>⚙️ Painel Administrativo - Multi Lucro</h2>
+                    <form method="POST" action="/save">
+                        <label><b>Token do Bot Telegram:</b></label><br>
+                        <input type="text" name="token_telegram" value="{t_telegram}" style="width: 100%; padding: 8px; margin-bottom: 10px;"><br>
+                        
+                        <label><b>Mercado Pago Access Token:</b></label><br>
+                        <input type="text" name="mp_access_token" value="{mp_token}" style="width: 100%; padding: 8px; margin-bottom: 10px;"><br>
+                        
+                        <label><b>Nome Fantasia:</b></label><br>
+                        <input type="text" name="nome_fantasia" value="{fantasia}" style="width: 100%; padding: 8px; margin-bottom: 20px;"><br>
+                        
+                        <input type="submit" value="Salvar Alteracoes" style="background: #28a745; color: white; padding: 10px 20px; border: none; cursor: pointer;">
+                    </form>
+                </body>
+                </html>
+                """
+                self.wfile.write(html.encode("utf-8"))
+            else:
+                self.send_response(401)
+                self.end_headers()
+                self.wfile.write(b"Usuario ou senha incorretos.")
+        else:
+            self.send_response(200)
+            self.send_header("Content-type", "text/plain; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(b"Multi Lucro Bot online na nuvem com sucesso!")
+
+    def do_POST(self):
+        if self.path == '/save':
+            content_length = int(self.headers.get('Content-Length', 0))
+            post_data = self.rfile.read(content_length).decode('utf-8')
+            params = urllib.parse.parse_qs(post_data)
+
+            if 'token_telegram' in params:
+                set_config('token_telegram', params['token_telegram'][0])
+            if 'mp_access_token' in params:
+                set_config('mp_access_token', params['mp_access_token'][0])
+            if 'nome_fantasia' in params:
+                set_config('nome_fantasia', params['nome_fantasia'][0])
+
+            self.send_response(200)
+            self.send_header("Content-type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(b"<h3>Configuracoes salvas com sucesso! Reinicie o servico no Render se alterou o Token do Bot.</h3><a href='/'>Voltar</a>")
+
+def run_web_server():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(('0.0.0.0', port), ConfigHandler)
+    logger.info(f"Servidor Web rodando na porta {port}")
+    server.serve_forever()
+
 user_states = {}
 
 async def post_init(application: Application):
@@ -93,7 +184,7 @@ async def post_init(application: Application):
         ("start", "Iniciar o bot e painel principal"),
         ("investir", "Fazer um novo investimento"),
         ("meus_investimentos", "Ver e resgatar investimentos"),
-        ("sorte", "Comprar números da sorte"),
+        ("sorte", "Comprar numeros da sorte"),
         ("cadastro", "Ver meus dados cadastrais")
     ]
     await application.bot.set_my_commands(commands)
@@ -103,7 +194,7 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    conn = sqlite3.connect('multilucro.db')
+    conn = sqlite3.connect('multilucro.db', check_same_thread=False)
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
     user = cursor.fetchone()
@@ -120,8 +211,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await main_menu(update, context)
 
 async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    webapp_url = "https://core.telegram.org/bots/samples" 
-    
     keyboard = [
         [InlineKeyboardButton("📊 Meus Investimentos & Resgates", callback_data='ver_investimentos'),
          InlineKeyboardButton("💰 Investir Agora", callback_data='novo_investimento')],
@@ -130,7 +219,7 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    text = "💎 **Painel Principal - Multi Lucro Investimentos**\n\nEscolha uma opção abaixo:"
+    text = f"💎 **Painel Principal - {get_config('nome_fantasia')}**\n\nEscolha uma opção abaixo:"
     if update.callback_query:
         await update.callback_query.message.edit_text(text, reply_markup=reply_markup)
     else:
@@ -166,7 +255,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             telefone = user_states[user_id]['telefone']
             email = text
 
-            conn = sqlite3.connect('multilucro.db')
+            conn = sqlite3.connect('multilucro.db', check_same_thread=False)
             cursor = conn.cursor()
             cursor.execute("INSERT OR REPLACE INTO users (user_id, nome, cpf, pix, telefone, email) VALUES (?, ?, ?, ?, ?, ?)",
                            (user_id, nome, cpf, pix, telefone, email))
@@ -174,7 +263,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             conn.close()
 
             del user_states[user_id]
-            await update.message.reply_text("✅ **Cadastro realizado com sucesso na Multi Lucro Investimentos!**")
+            await update.message.reply_text(f"✅ **Cadastro realizado com sucesso na {get_config('nome_fantasia')}!**")
             await main_menu(update, context)
             
         elif user_states[user_id].get('step') == 'valor_investimento':
@@ -183,13 +272,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 prazo = user_states[user_id]['prazo']
                 lucro = user_states[user_id]['lucro']
 
+                mp_token = get_config('mp_access_token')
                 headers = {
-                    "Authorization": f"Bearer {MP_ACCESS_TOKEN}",
+                    "Authorization": f"Bearer {mp_token}",
                     "Content-Type": "application/json"
                 }
                 payload = {
                     "transaction_amount": valor,
-                    "description": f"Investimento Multi Lucro - Prazo {prazo} dias",
+                    "description": f"Investimento {get_config('nome_fantasia')} - Prazo {prazo} dias",
                     "payment_method_id": "pix",
                     "payer": {
                         "email": "cliente@multilucro.com"
@@ -202,8 +292,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     del user_states[user_id]
                     await update.message.reply_text(
                         "❌ **Erro ao gerar a cobrança Pix!**\n\n"
-                        "Não foi possível conectar à intermediadora de pagamentos (Verifique o Token do Mercado Pago).\n"
-                        "O investimento **não** foi registrado. Tente novamente mais tarde."
+                        "Não foi possível conectar à intermediadora de pagamentos (Verifique o Token no painel de configurações).\n"
+                        "O investimento **não** foi registrado."
                     )
                     await main_menu(update, context)
                     return
@@ -222,7 +312,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await main_menu(update, context)
                     return
 
-                conn = sqlite3.connect('multilucro.db')
+                conn = sqlite3.connect('multilucro.db', check_same_thread=False)
                 cursor = conn.cursor()
                 cursor.execute("INSERT INTO investments (user_id, valor, prazo_dias, lucro_pct, payment_id, status) VALUES (?, ?, ?, ?, ?, 'pendente')",
                                (user_id, valor, prazo, lucro, payment_id))
@@ -233,11 +323,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 del user_states[user_id]
                 
                 await update.message.reply_text(
-                    f"🧾 **Fatura Pix Gerada - Multi Lucro Investimentos**\n\n"
+                    f"🧾 **Fatura Pix Gerada - {get_config('nome_fantasia')}**\n\n"
                     f"💰 Valor: R$ {valor:.2f}\n"
                     f"📈 Retorno previsto: {lucro}% em {prazo} dias\n\n"
                     f"📋 **PIX Copia e Cola:**\n`{qr_code_copia_cola}`\n\n"
-                    f"⏳ *Realize o pagamento via Pix utilizando o código acima. Seu investimento ficará pendente de confirmação.*"
+                    f"⏳ *Realize o pagamento via Pix utilizando o código acima.*"
                 )
                 await main_menu(update, context)
             except ValueError:
@@ -249,7 +339,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 custo_unitario = 10.0
                 total = qtd * custo_unitario
 
-                conn = sqlite3.connect('multilucro.db')
+                conn = sqlite3.connect('multilucro.db', check_same_thread=False)
                 cursor = conn.cursor()
                 for _ in range(qtd):
                     num_sorte = random.randint(10000, 99999)
@@ -275,14 +365,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
 
     if query.data == 'ver_cadastro':
-        conn = sqlite3.connect('multilucro.db')
+        conn = sqlite3.connect('multilucro.db', check_same_thread=False)
         cursor = conn.cursor()
         cursor.execute("SELECT nome, cpf, pix, telefone, email FROM users WHERE user_id = ?", (user_id,))
         u = cursor.fetchone()
         conn.close()
 
         if u:
-            text = (f"👤 **Seus Dados - Multi Lucro**\n\n"
+            text = (f"👤 **Seus Dados - {get_config('nome_fantasia')}**\n\n"
                     f"Nome: {u[0]}\nCPF: {u[1]}\nPix: {u[2]}\nTelefone: {u[3]}\nE-mail: {u[4]}")
         else:
             text = "Cadastre-se primeiro usando /start"
@@ -307,7 +397,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text("💵 Digite o valor que deseja **investir** (ex: 500.00):")
 
     elif query.data == 'ver_investimentos':
-        conn = sqlite3.connect('multilucro.db')
+        conn = sqlite3.connect('multilucro.db', check_same_thread=False)
         cursor = conn.cursor()
         cursor.execute("SELECT id, valor, prazo_dias, lucro_pct, status FROM investments WHERE user_id = ?", (user_id,))
         invs = cursor.fetchall()
@@ -329,7 +419,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif query.data.startswith('resgatar_'):
         inv_id = int(query.data.split('_')[1])
-        conn = sqlite3.connect('multilucro.db')
+        conn = sqlite3.connect('multilucro.db', check_same_thread=False)
         cursor = conn.cursor()
         cursor.execute("SELECT valor, status FROM investments WHERE id = ? AND user_id = ?", (inv_id, user_id))
         inv = cursor.fetchone()
@@ -363,9 +453,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await main_menu(update, context)
 
 def main():
-    # Inicia o servidor web em uma thread separada para satisfazer o requisito de porta da nuvem
+    # Inicia o servidor HTTP web em background na porta fornecida pelo Render (ou 10000)
     server_thread = threading.Thread(target=run_web_server, daemon=True)
     server_thread.start()
+
+    token = get_config('token_telegram')
 
     request = HTTPXRequest(
         connect_timeout=30.0,
@@ -374,7 +466,7 @@ def main():
         pool_timeout=30.0
     )
     
-    app = Application.builder().token(TOKEN).request(request).post_init(post_init).build()
+    app = Application.builder().token(token).request(request).post_init(post_init).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("investir", start))
@@ -383,7 +475,7 @@ def main():
     
     app.add_error_handler(error_handler)
 
-    print("🤖 Bot Multi Lucro rodando na nuvem com Servidor Web integrado!")
+    print("🤖 Bot Multi Lucro rodando na nuvem com Painel de Configurações Web!")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == '__main__':
