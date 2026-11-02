@@ -6,7 +6,7 @@ import os
 import threading
 import urllib.parse
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import Application, ContextTypes, CommandHandler, CallbackQueryHandler, MessageHandler, filters
 from telegram.request import HTTPXRequest
 
@@ -26,9 +26,9 @@ def init_db():
         )
     ''')
     
-    # Configurações padrão iniciais
+    # Inserção das configurações padrão, incluindo o token real do Mercado Pago fornecido
     cursor.execute("INSERT OR IGNORE INTO config (chave, valor) VALUES ('token_telegram', '9224084908:AAEdezPAnFHcc8NPuwtsPG1VEMRxZ1PrDHA')")
-    cursor.execute("INSERT OR IGNORE INTO config (chave, valor) VALUES ('mp_access_token', 'TEST-0000000000000000-000000-00000000000000000000000000000000-0')")
+    cursor.execute("INSERT OR IGNORE INTO config (chave, valor) VALUES ('mp_access_token', 'APP_USR-8795274098799200-110122-881e19882551e6846a65ae9be5029814-442748191')")
     cursor.execute("INSERT OR IGNORE INTO config (chave, valor) VALUES ('nome_fantasia', 'Multi Lucro Investimentos')")
 
     cursor.execute('''
@@ -124,7 +124,7 @@ class ConfigHandler(BaseHTTPRequestHandler):
 
                 html = f"""
                 <html>
-                <head><title>Multi Lucro - Painel de Configurações</title></head>
+                <head><title>Multi Lucro - Painel de Configuracoes</title></head>
                 <body style="font-family: Arial; padding: 20px; background: #f4f4f9;">
                     <h2>⚙️ Painel Administrativo - Multi Lucro</h2>
                     <form method="POST" action="/save">
@@ -169,12 +169,11 @@ class ConfigHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-type", "text/html; charset=utf-8")
             self.end_headers()
-            self.wfile.write(b"<h3>Configuracoes salvas com sucesso! Reinicie o servico no Render se alterou o Token do Bot.</h3><a href='/'>Voltar</a>")
+            self.wfile.write(b"<h3>Configuracoes salvas com sucesso!</h3><a href='/'>Voltar</a>")
 
 def run_web_server():
     port = int(os.environ.get("PORT", 10000))
     server = HTTPServer(('0.0.0.0', port), ConfigHandler)
-    logger.info(f"Servidor Web rodando na porta {port}")
     server.serve_forever()
 
 user_states = {}
@@ -211,11 +210,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await main_menu(update, context)
 
 async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    webapp_url = "https://core.telegram.org/bots/samples" 
+    
     keyboard = [
         [InlineKeyboardButton("📊 Meus Investimentos & Resgates", callback_data='ver_investimentos'),
          InlineKeyboardButton("💰 Investir Agora", callback_data='novo_investimento')],
         [InlineKeyboardButton("🎟️ Números da Sorte", callback_data='comprar_sorte'),
-         InlineKeyboardButton("👤 Meu Cadastro", callback_data='ver_cadastro')]
+         InlineKeyboardButton("👤 Meu Cadastro", callback_data='ver_cadastro')],
+        [InlineKeyboardButton("📱 Abrir Painel Gráfico (Mini App)", web_app=WebAppInfo(url=webapp_url))]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
@@ -273,41 +275,32 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 lucro = user_states[user_id]['lucro']
 
                 mp_token = get_config('mp_access_token')
+                fantasia = get_config('nome_fantasia')
+                qr_code_copia_cola = ""
+                payment_id = "simulado_" + str(random.randint(1000, 9999))
+
                 headers = {
                     "Authorization": f"Bearer {mp_token}",
                     "Content-Type": "application/json"
                 }
                 payload = {
                     "transaction_amount": valor,
-                    "description": f"Investimento {get_config('nome_fantasia')} - Prazo {prazo} dias",
+                    "description": f"Investimento {fantasia} - Prazo {prazo} dias",
                     "payment_method_id": "pix",
-                    "payer": {
-                        "email": "cliente@multilucro.com"
-                    }
+                    "payer": {"email": "cliente@multilucro.com"}
                 }
                 
                 response = requests.post("https://api.mercadopago.com/v1/payments", json=payload, headers=headers)
-                
-                if response.status_code != 201:
-                    del user_states[user_id]
-                    await update.message.reply_text(
-                        "❌ **Erro ao gerar a cobrança Pix!**\n\n"
-                        "Não foi possível conectar à intermediadora de pagamentos (Verifique o Token no painel de configurações).\n"
-                        "O investimento **não** foi registrado."
-                    )
-                    await main_menu(update, context)
-                    return
-
-                data = response.json()
-                payment_id = str(data.get("id"))
-                point_of_interaction = data.get("point_of_interaction", {})
-                qr_data = point_of_interaction.get("transaction_data", {})
-                qr_code_copia_cola = qr_data.get("qr_code")
+                if response.status_code == 201:
+                    data = response.json()
+                    payment_id = str(data.get("id"))
+                    qr_code_copia_cola = data.get("point_of_interaction", {}).get("transaction_data", {}).get("qr_code", "")
 
                 if not qr_code_copia_cola:
                     del user_states[user_id]
                     await update.message.reply_text(
-                        "❌ **Erro na resposta do Pix!** O código Copia e Cola não foi retornado. Investimento cancelado."
+                        "❌ **Erro ao gerar a cobrança Pix no Mercado Pago!**\n\n"
+                        "Verifique se o seu Access Token possui permissões ativas para pagamentos Pix."
                     )
                     await main_menu(update, context)
                     return
@@ -323,11 +316,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 del user_states[user_id]
                 
                 await update.message.reply_text(
-                    f"🧾 **Fatura Pix Gerada - {get_config('nome_fantasia')}**\n\n"
+                    f"🧾 **Fatura Pix Gerada - {fantasia}**\n\n"
                     f"💰 Valor: R$ {valor:.2f}\n"
                     f"📈 Retorno previsto: {lucro}% em {prazo} dias\n\n"
                     f"📋 **PIX Copia e Cola:**\n`{qr_code_copia_cola}`\n\n"
-                    f"⏳ *Realize o pagamento via Pix utilizando o código acima.*"
+                    f"⏳ *Realize o pagamento utilizando o código acima. O investimento foi registrado como pendente.*"
                 )
                 await main_menu(update, context)
             except ValueError:
@@ -453,7 +446,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await main_menu(update, context)
 
 def main():
-    # Inicia o servidor HTTP web em background na porta fornecida pelo Render (ou 10000)
     server_thread = threading.Thread(target=run_web_server, daemon=True)
     server_thread.start()
 
@@ -475,7 +467,7 @@ def main():
     
     app.add_error_handler(error_handler)
 
-    print("🤖 Bot Multi Lucro rodando na nuvem com Painel de Configurações Web!")
+    print("🤖 Bot Multi Lucro rodando com Token do Mercado Pago integrado!")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == '__main__':
